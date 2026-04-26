@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import Sidebar from "./components/Sidebar";
 import LivingBackground from "./components/LivingBackground";
+import { supabase } from "./lib/supabase";
 
 import {
   AdminPage,
@@ -29,6 +30,62 @@ import {
   UserProfile,
 } from "./components/config";
 
+function dbToUser(row: any): UserProfile {
+  return {
+    id: row.id,
+    nickname: row.nickname,
+    role: row.role,
+    faction: row.faction,
+    status: row.status,
+
+    warnings: row.warnings ?? 0,
+    reprimands: row.reprimands ?? 0,
+    timeoutUntil: row.timeout_until ?? null,
+
+    isModerator: row.is_moderator ?? false,
+    isOwner: row.is_owner ?? false,
+
+    discordId: row.discord_id ?? null,
+    discordName: row.discord_name ?? null,
+    discordAvatar: row.discord_avatar ?? null,
+    steamId: row.steam_id ?? null,
+
+    bio: row.bio ?? "",
+    reputation: row.reputation ?? 0,
+    badges: row.badges ?? [],
+    profileComments: row.profile_comments ?? [],
+    punishmentHistory: row.punishment_history ?? [],
+  };
+}
+
+function userToDb(user: UserProfile) {
+  return {
+    id: user.id,
+    nickname: user.nickname,
+    role: user.role,
+    faction: user.faction,
+    status: user.status,
+
+    warnings: user.warnings,
+    reprimands: user.reprimands,
+    timeout_until: user.timeoutUntil,
+
+    is_moderator: user.isModerator,
+    is_owner: user.isOwner,
+
+    discord_id: user.discordId,
+    discord_name: user.discordName,
+    discord_avatar: user.discordAvatar,
+    steam_id: user.steamId,
+
+    bio: user.bio,
+    reputation: user.reputation,
+    badges: user.badges,
+    profile_comments: user.profileComments,
+    punishment_history: user.punishmentHistory,
+  };
+}
+
 export default function Home() {
   const { data: session } = useSession();
 
@@ -36,59 +93,95 @@ export default function Home() {
   const [page, setPage] = useState("Главная");
   const [settings, setSettings] = useState<Settings>(defaultSettings);
   const [currentUser, setCurrentUser] = useState<UserProfile>(defaultUser);
-  const [users, setUsers] = useState<UserProfile[]>([defaultUser]);
+  const [users, setUsers] = useState<UserProfile[]>([]);
   const [viewedUser, setViewedUser] = useState<UserProfile | null>(null);
+
+  async function loadUsers() {
+    const { data, error } = await supabase
+      .from("users")
+      .select("*")
+      .order("id", { ascending: true });
+
+    if (error) {
+      console.error("Ошибка загрузки пользователей:", error);
+      setUsers([defaultUser]);
+      return;
+    }
+
+    const loadedUsers = (data || []).map(dbToUser);
+
+    if (loadedUsers.length === 0) {
+      const { error: insertError } = await supabase
+        .from("users")
+        .insert(userToDb(defaultUser));
+
+      if (insertError) {
+        console.error("Ошибка создания defaultUser:", insertError);
+      }
+
+      setUsers([defaultUser]);
+      setCurrentUser(defaultUser);
+      return;
+    }
+
+    setUsers(loadedUsers);
+  }
 
   useEffect(() => {
     const savedSettings = localStorage.getItem("kamiko-settings");
-    const savedUser = localStorage.getItem("kamiko-user");
-    const savedUsers = localStorage.getItem("kamiko-users");
 
     if (savedSettings) {
       setSettings({ ...defaultSettings, ...JSON.parse(savedSettings) });
     }
 
-    if (savedUser) {
-      setCurrentUser({ ...defaultUser, ...JSON.parse(savedUser) });
-    }
-
-    if (savedUsers) {
-      const parsedUsers = JSON.parse(savedUsers);
-      setUsers(parsedUsers.length > 0 ? parsedUsers : [defaultUser]);
-    }
+    loadUsers();
   }, []);
 
   useEffect(() => {
-    if (!session?.user) return;
+    async function syncDiscordUser() {
+      if (!session?.user) return;
 
-    const sessionUser = session.user as {
-      id?: string | null;
-      name?: string | null;
-      email?: string | null;
-      image?: string | null;
-    };
+      const sessionUser = session.user as {
+        id?: string | null;
+        name?: string | null;
+        email?: string | null;
+        image?: string | null;
+      };
 
-    const discordId =
-      sessionUser.id || sessionUser.email || sessionUser.name || null;
+      const discordId =
+        sessionUser.id || sessionUser.email || sessionUser.name || null;
 
-    if (!discordId) return;
+      if (!discordId) return;
 
-    setUsers((current) => {
-      const existing = current.find((user) => user.discordId === discordId);
+      const { data: existingRows, error } = await supabase
+        .from("users")
+        .select("*")
+        .eq("discord_id", discordId)
+        .limit(1);
+
+      if (error) {
+        console.error("Ошибка поиска пользователя:", error);
+        return;
+      }
+
+      const existing = existingRows?.[0];
 
       if (existing) {
         const updatedUser: UserProfile = {
-          ...existing,
+          ...dbToUser(existing),
           discordId,
-          discordName: sessionUser.name || existing.discordName,
-          discordAvatar: sessionUser.image || existing.discordAvatar,
+          discordName: sessionUser.name || existing.discord_name,
+          discordAvatar: sessionUser.image || existing.discord_avatar,
         };
 
-        setCurrentUser(updatedUser);
+        await supabase
+          .from("users")
+          .update(userToDb(updatedUser))
+          .eq("id", updatedUser.id);
 
-        return current.map((user) =>
-          user.id === existing.id ? updatedUser : user
-        );
+        setCurrentUser(updatedUser);
+        await loadUsers();
+        return;
       }
 
       const newUser: UserProfile = {
@@ -113,10 +206,20 @@ export default function Home() {
         punishmentHistory: [],
       };
 
-      setCurrentUser(newUser);
+      const { error: insertError } = await supabase
+        .from("users")
+        .insert(userToDb(newUser));
 
-      return [...current, newUser];
-    });
+      if (insertError) {
+        console.error("Ошибка создания пользователя:", insertError);
+        return;
+      }
+
+      setCurrentUser(newUser);
+      await loadUsers();
+    }
+
+    syncDiscordUser();
   }, [session]);
 
   useEffect(() => {
@@ -124,26 +227,35 @@ export default function Home() {
   }, [settings]);
 
   useEffect(() => {
-    localStorage.setItem("kamiko-user", JSON.stringify(currentUser));
-
     if (!canAccessPage(currentUser, page)) {
       setPage("Главная");
     }
   }, [currentUser, page]);
 
-  useEffect(() => {
-    localStorage.setItem("kamiko-users", JSON.stringify(users));
-  }, [users]);
+  async function updateUser(userId: number, patch: Partial<UserProfile>) {
+    const user = users.find((item) => item.id === userId);
+    if (!user) return;
 
-  function updateUser(userId: number, patch: Partial<UserProfile>) {
+    const updatedUser: UserProfile = {
+      ...user,
+      ...patch,
+    };
+
     setUsers((current) =>
-      current.map((user) =>
-        user.id === userId ? { ...user, ...patch } : user
-      )
+      current.map((item) => (item.id === userId ? updatedUser : item))
     );
 
     if (currentUser.id === userId) {
-      setCurrentUser((user) => ({ ...user, ...patch }));
+      setCurrentUser(updatedUser);
+    }
+
+    const { error } = await supabase
+      .from("users")
+      .update(userToDb(updatedUser))
+      .eq("id", userId);
+
+    if (error) {
+      console.error("Ошибка обновления пользователя:", error);
     }
   }
 
