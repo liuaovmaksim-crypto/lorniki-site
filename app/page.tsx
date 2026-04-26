@@ -2,6 +2,7 @@
 
 import Notifications from "./components/Notifications";
 import { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
 import Sidebar from "./components/Sidebar";
 import LivingBackground from "./components/LivingBackground";
 
@@ -29,6 +30,8 @@ import {
 } from "./components/config";
 
 export default function Home() {
+  const { data: session } = useSession();
+
   const [open, setOpen] = useState(true);
   const [page, setPage] = useState("Главная");
   const [settings, setSettings] = useState<Settings>(defaultSettings);
@@ -36,7 +39,6 @@ export default function Home() {
   const [users, setUsers] = useState<UserProfile[]>([defaultUser]);
   const [viewedUser, setViewedUser] = useState<UserProfile | null>(null);
 
-  // загрузка
   useEffect(() => {
     const savedSettings = localStorage.getItem("kamiko-settings");
     const savedUser = localStorage.getItem("kamiko-user");
@@ -47,12 +49,7 @@ export default function Home() {
     }
 
     if (savedUser) {
-      const parsedUser = { ...defaultUser, ...JSON.parse(savedUser) };
-      setCurrentUser(parsedUser);
-
-      if (!savedUsers) {
-        setUsers([parsedUser]);
-      }
+      setCurrentUser({ ...defaultUser, ...JSON.parse(savedUser) });
     }
 
     if (savedUsers) {
@@ -61,12 +58,61 @@ export default function Home() {
     }
   }, []);
 
-  // сохранение настроек
+  useEffect(() => {
+    if (!session?.user) return;
+
+    const discordId =
+      session.user.id || session.user.email || session.user.name || null;
+
+    if (!discordId) return;
+
+    setUsers((current) => {
+      const existing = current.find((user) => user.discordId === discordId);
+
+      if (existing) {
+        const updatedUser: UserProfile = {
+          ...existing,
+          discordId,
+          discordName: session.user.name || existing.discordName,
+          discordAvatar: session.user.image || existing.discordAvatar,
+        };
+
+        setCurrentUser(updatedUser);
+
+        return current.map((user) =>
+          user.id === existing.id ? updatedUser : user
+        );
+      }
+
+      const newUser: UserProfile = {
+        ...defaultUser,
+        id: Date.now(),
+        nickname: session.user.name || "Новый игрок",
+        discordId,
+        discordName: session.user.name || "Discord User",
+        discordAvatar: session.user.image || null,
+        role: "Гость",
+        faction: "Скитальцы",
+        status: "Ожидает регистрации",
+        isOwner: false,
+        isModerator: false,
+        warnings: 0,
+        reprimands: 0,
+        timeoutUntil: null,
+        badges: ["Новичок"],
+        bio: "",
+      };
+
+      setCurrentUser(newUser);
+
+      return [...current, newUser];
+    });
+  }, [session]);
+
   useEffect(() => {
     localStorage.setItem("kamiko-settings", JSON.stringify(settings));
   }, [settings]);
 
-  // сохранение текущего пользователя
   useEffect(() => {
     localStorage.setItem("kamiko-user", JSON.stringify(currentUser));
 
@@ -75,12 +121,10 @@ export default function Home() {
     }
   }, [currentUser, page]);
 
-  // сохранение всех пользователей
   useEffect(() => {
     localStorage.setItem("kamiko-users", JSON.stringify(users));
   }, [users]);
 
-  // 🔥 ОБНОВЛЕНИЕ ПОЛЬЗОВАТЕЛЯ (важно для правого клика)
   function updateUser(userId: number, patch: Partial<UserProfile>) {
     setUsers((current) =>
       current.map((user) =>
@@ -160,9 +204,7 @@ export default function Home() {
           <section className="relative mt-10 max-w-6xl pl-12 pt-16">
             {page === "Главная" && <HomePage setPage={setPage} />}
 
-            {page === "Живая лента" && (
-              <FeedPage currentUser={currentUser} />
-            )}
+            {page === "Живая лента" && <FeedPage currentUser={currentUser} />}
 
             {page === "Игроки" && (
               <PlayersPage
@@ -170,15 +212,13 @@ export default function Home() {
                 currentUser={currentUser}
                 setPage={setPage}
                 setViewedUser={setViewedUser}
-                updateUser={updateUser} // 🔥 ВОТ ЭТО БЫЛО КРИТИЧНО
+                updateUser={updateUser}
               />
             )}
 
             {page === "Информация" && <InfoPage />}
 
-            {page === "Квоты" && (
-              <QuotaPage currentUser={currentUser} />
-            )}
+            {page === "Квоты" && <QuotaPage currentUser={currentUser} />}
 
             {page === "Правила" && <RulesPage />}
 
@@ -189,10 +229,7 @@ export default function Home() {
             )}
 
             {page === "Профиль" && (
-              <ProfilePage
-                currentUser={currentUser}
-                viewedUser={viewedUser}
-              />
+              <ProfilePage currentUser={currentUser} viewedUser={viewedUser} />
             )}
 
             {page === "Настройки" && (

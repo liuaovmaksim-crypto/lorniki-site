@@ -35,6 +35,7 @@ export type UserProfile = {
   isModerator: boolean;
   isOwner: boolean;
 
+  discordId?: string | null;
   discordName?: string | null;
   discordAvatar?: string | null;
   steamId?: string | null;
@@ -60,6 +61,7 @@ export const defaultUser: UserProfile = {
   isModerator: true,
   isOwner: true,
 
+  discordId: null,
   discordName: null,
   discordAvatar: null,
   steamId: null,
