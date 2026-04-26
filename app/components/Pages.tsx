@@ -797,6 +797,25 @@ export function ProfilePage({
 }) {
 
 const profileUser = viewedUser || currentUser;
+const storageKey = `kamiko-profile-${profileUser.id}`;
+
+const [profileData, setProfileData] = useState<ProfileLocalData>(() => {
+  if (typeof window === "undefined") {
+    return { banner: null, bio: profileUser.bio || "" };
+  }
+
+  const saved = localStorage.getItem(storageKey);
+
+if (saved) {
+  try {
+    return JSON.parse(saved);
+  } catch {
+    return { banner: null, bio: profileUser.bio || "" };
+  }
+}
+
+  return { banner: null, bio: profileUser.bio || "" };
+});
 
   useEffect(() => {
     localStorage.setItem(storageKey, JSON.stringify(profileData));
