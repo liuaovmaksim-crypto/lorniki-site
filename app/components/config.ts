@@ -36,6 +36,7 @@ export type UserProfile = {
   isOwner: boolean;
 
   discordId?: string | null;
+  discordId?: string | null;
   discordName?: string | null;
   discordAvatar?: string | null;
   steamId?: string | null;

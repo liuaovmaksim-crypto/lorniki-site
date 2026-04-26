@@ -61,8 +61,15 @@ export default function Home() {
   useEffect(() => {
     if (!session?.user) return;
 
+    const sessionUser = session.user as {
+      id?: string | null;
+      name?: string | null;
+      email?: string | null;
+      image?: string | null;
+    };
+
     const discordId =
-      (session.user as any).id || session.user.email || session.user.name || null;
+      sessionUser.id || sessionUser.email || sessionUser.name || null;
 
     if (!discordId) return;
 
@@ -73,8 +80,8 @@ export default function Home() {
         const updatedUser: UserProfile = {
           ...existing,
           discordId,
-          discordName: session.user.name || existing.discordName,
-          discordAvatar: session.user.image || existing.discordAvatar,
+          discordName: sessionUser.name || existing.discordName,
+          discordAvatar: sessionUser.image || existing.discordAvatar,
         };
 
         setCurrentUser(updatedUser);
@@ -87,10 +94,10 @@ export default function Home() {
       const newUser: UserProfile = {
         ...defaultUser,
         id: Date.now(),
-        nickname: session.user.name || "Новый игрок",
+        nickname: sessionUser.name || "Новый игрок",
         discordId,
-        discordName: session.user.name || "Discord User",
-        discordAvatar: session.user.image || null,
+        discordName: sessionUser.name || "Discord User",
+        discordAvatar: sessionUser.image || null,
         role: "Гость",
         faction: "Скитальцы",
         status: "Ожидает регистрации",
@@ -101,6 +108,9 @@ export default function Home() {
         timeoutUntil: null,
         badges: ["Новичок"],
         bio: "",
+        reputation: 0,
+        profileComments: [],
+        punishmentHistory: [],
       };
 
       setCurrentUser(newUser);
