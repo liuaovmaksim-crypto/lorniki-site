@@ -35,7 +35,7 @@ export type UserProfile = {
   isModerator: boolean;
   isOwner: boolean;
 
-  discordId?: string | null;
+  // ✅ ИСПРАВЛЕНО (убран дубликат)
   discordId?: string | null;
   discordName?: string | null;
   discordAvatar?: string | null;
