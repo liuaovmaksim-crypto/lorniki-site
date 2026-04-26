@@ -1,3 +1,6 @@
+"use client";
+
+import { useSession } from "next-auth/react";
 import { canAccessPage, menu, UserProfile } from "./config";
 
 export default function Sidebar({
@@ -13,6 +16,11 @@ export default function Sidebar({
   setPage: (value: string) => void;
   currentUser: UserProfile;
 }) {
+  const { data: session } = useSession();
+
+  const displayName = session?.user?.name || currentUser.nickname;
+  const displayAvatar = session?.user?.image || null;
+
   const visibleMenu = menu.filter((item) => canAccessPage(currentUser, item));
 
   return (
@@ -39,12 +47,11 @@ export default function Sidebar({
             <h1 className="mt-2 text-3xl font-black leading-tight">
               Архив лорников
             </h1>
-            <p className="mt-2 text-xs text-white/35">
-              Роль: {currentUser.role}
-              {currentUser.isModerator && currentUser.role !== "Владелец"
-                ? " · Модерация"
-                : ""}
-            </p>
+<p className="mt-2 text-xs text-white/35">
+  Роль: {currentUser.role}
+  {currentUser.isOwner ? " · Владелец" : ""}
+  {!currentUser.isOwner && currentUser.isModerator ? " · Модерация" : ""}
+</p>
           </div>
         )}
 
@@ -94,13 +101,21 @@ export default function Sidebar({
               }`}
             >
               <div className="flex items-center gap-3">
-                <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-[var(--second)]/30 bg-[var(--second)]/10 text-white">
-                  {currentUser.nickname[0] || "?"}
+                <div className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-full border border-[var(--second)]/30 bg-[var(--second)]/10 text-white">
+                  {displayAvatar ? (
+                    <img
+                      src={displayAvatar}
+                      alt="avatar"
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    displayName?.[0] ?? "?"
+                  )}
                 </div>
 
                 <div className="min-w-0">
                   <p className="truncate font-black text-white">
-                    {currentUser.nickname}
+                    {displayName}
                   </p>
                   <p className="truncate text-xs text-white/35">
                     {currentUser.role} · {currentUser.faction}

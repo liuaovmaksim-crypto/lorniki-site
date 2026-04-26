@@ -10,13 +10,13 @@ import {
   FeedPage,
   HomePage,
   InfoPage,
+  PlayersPage,
   ProfilePage,
   QuotaPage,
   ReglamentPage,
   RulesPage,
   SettingsPage,
   SuggestionsPage,
-  TextPage,
 } from "./components/Pages";
 
 import {
@@ -33,24 +33,40 @@ export default function Home() {
   const [page, setPage] = useState("Главная");
   const [settings, setSettings] = useState<Settings>(defaultSettings);
   const [currentUser, setCurrentUser] = useState<UserProfile>(defaultUser);
+  const [users, setUsers] = useState<UserProfile[]>([defaultUser]);
+  const [viewedUser, setViewedUser] = useState<UserProfile | null>(null);
 
+  // загрузка
   useEffect(() => {
     const savedSettings = localStorage.getItem("kamiko-settings");
     const savedUser = localStorage.getItem("kamiko-user");
+    const savedUsers = localStorage.getItem("kamiko-users");
 
     if (savedSettings) {
       setSettings({ ...defaultSettings, ...JSON.parse(savedSettings) });
     }
 
     if (savedUser) {
-      setCurrentUser({ ...defaultUser, ...JSON.parse(savedUser) });
+      const parsedUser = { ...defaultUser, ...JSON.parse(savedUser) };
+      setCurrentUser(parsedUser);
+
+      if (!savedUsers) {
+        setUsers([parsedUser]);
+      }
+    }
+
+    if (savedUsers) {
+      const parsedUsers = JSON.parse(savedUsers);
+      setUsers(parsedUsers.length > 0 ? parsedUsers : [defaultUser]);
     }
   }, []);
 
+  // сохранение настроек
   useEffect(() => {
     localStorage.setItem("kamiko-settings", JSON.stringify(settings));
   }, [settings]);
 
+  // сохранение текущего пользователя
   useEffect(() => {
     localStorage.setItem("kamiko-user", JSON.stringify(currentUser));
 
@@ -58,6 +74,24 @@ export default function Home() {
       setPage("Главная");
     }
   }, [currentUser, page]);
+
+  // сохранение всех пользователей
+  useEffect(() => {
+    localStorage.setItem("kamiko-users", JSON.stringify(users));
+  }, [users]);
+
+  // 🔥 ОБНОВЛЕНИЕ ПОЛЬЗОВАТЕЛЯ (важно для правого клика)
+  function updateUser(userId: number, patch: Partial<UserProfile>) {
+    setUsers((current) =>
+      current.map((user) =>
+        user.id === userId ? { ...user, ...patch } : user
+      )
+    );
+
+    if (currentUser.id === userId) {
+      setCurrentUser((user) => ({ ...user, ...patch }));
+    }
+  }
 
   function selectTheme(themeId: string) {
     const theme = themes.find((t) => t.id === themeId);
@@ -103,6 +137,7 @@ export default function Home() {
         <section className="flex-1 px-8 py-6">
           <header className="flex items-center gap-4">
             <Notifications currentUser={currentUser} />
+
             <div className="flex flex-1 items-center rounded-full border border-white/10 bg-black/30 px-6 py-4 backdrop-blur-xl">
               <span className="text-white/35">⌕</span>
               <input
@@ -112,24 +147,54 @@ export default function Home() {
             </div>
 
             <button
-              onClick={() => setPage("Профиль")}
+              onClick={() => {
+                setViewedUser(null);
+                setPage("Профиль");
+              }}
               className="rounded-full bg-white px-7 py-4 font-black text-black shadow-[0_0_var(--glow)_var(--accent)] transition hover:scale-105 active:scale-95"
             >
-              Войти через Steam
+              Мой профиль
             </button>
           </header>
 
           <section className="relative mt-10 max-w-6xl pl-12 pt-16">
             {page === "Главная" && <HomePage setPage={setPage} />}
-            {page === "Живая лента" && <FeedPage currentUser={currentUser} />}
+
+            {page === "Живая лента" && (
+              <FeedPage currentUser={currentUser} />
+            )}
+
+            {page === "Игроки" && (
+              <PlayersPage
+                users={users}
+                currentUser={currentUser}
+                setPage={setPage}
+                setViewedUser={setViewedUser}
+                updateUser={updateUser} // 🔥 ВОТ ЭТО БЫЛО КРИТИЧНО
+              />
+            )}
+
             {page === "Информация" && <InfoPage />}
-            {page === "Квоты" && <QuotaPage currentUser={currentUser} />}
+
+            {page === "Квоты" && (
+              <QuotaPage currentUser={currentUser} />
+            )}
+
             {page === "Правила" && <RulesPage />}
+
             {page === "Регламент" && <ReglamentPage />}
+
             {page === "Предложения" && (
               <SuggestionsPage currentUser={currentUser} />
             )}
-            {page === "Профиль" && <ProfilePage currentUser={currentUser} />}
+
+            {page === "Профиль" && (
+              <ProfilePage
+                currentUser={currentUser}
+                viewedUser={viewedUser}
+              />
+            )}
+
             {page === "Настройки" && (
               <SettingsPage
                 settings={settings}
@@ -137,6 +202,7 @@ export default function Home() {
                 selectTheme={selectTheme}
               />
             )}
+
             {page === "Админ-панель" && (
               <AdminPage
                 currentUser={currentUser}

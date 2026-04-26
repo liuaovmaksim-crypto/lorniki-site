@@ -3,8 +3,23 @@ export type Role =
   | "Демон"
   | "Истребитель"
   | "Лорник"
-  | "Глава фракции"
-  | "Владелец";
+  | "Глава фракции";
+
+export type ProfileComment = {
+  id: number;
+  authorId: number;
+  authorName: string;
+  text: string;
+  time: string;
+};
+
+export type PunishmentHistory = {
+  id: number;
+  type: "Предупреждение" | "Выговор" | "Тайм-аут" | "Снятие наказаний";
+  reason: string;
+  actorName: string;
+  time: string;
+};
 
 export type UserProfile = {
   id: number;
@@ -12,22 +27,48 @@ export type UserProfile = {
   role: Role;
   faction: string;
   status: string;
+
   warnings: number;
   reprimands: number;
   timeoutUntil: string | null;
+
   isModerator: boolean;
+  isOwner: boolean;
+
+  discordName?: string | null;
+  discordAvatar?: string | null;
+  steamId?: string | null;
+
+  bio: string;
+  reputation: number;
+  badges: string[];
+  profileComments: ProfileComment[];
+  punishmentHistory: PunishmentHistory[];
 };
 
 export const defaultUser: UserProfile = {
   id: 1,
   nickname: "Yuto",
-  role: "Владелец",
+  role: "Лорник",
   faction: "Система",
   status: "Полный доступ",
+
   warnings: 0,
   reprimands: 0,
   timeoutUntil: null,
+
   isModerator: true,
+  isOwner: true,
+
+  discordName: null,
+  discordAvatar: null,
+  steamId: null,
+
+  bio: "",
+  reputation: 100,
+  badges: ["Владелец", "Основатель"],
+  profileComments: [],
+  punishmentHistory: [],
 };
 
 export const roles: Role[] = [
@@ -36,12 +77,12 @@ export const roles: Role[] = [
   "Истребитель",
   "Лорник",
   "Глава фракции",
-  "Владелец",
 ];
 
 export const menu = [
   "Главная",
   "Живая лента",
+  "Игроки",
   "Информация",
   "Квоты",
   "Правила",
@@ -52,11 +93,13 @@ export const menu = [
 ];
 
 export function canAccessPage(user: UserProfile, page: string) {
-  if (user.role === "Владелец") return true;
+  if (user.isOwner) return true;
   if (user.isModerator && page === "Админ-панель") return true;
 
   if (user.role === "Гость") {
-    return ["Главная", "Живая лента", "Настройки", "Профиль"].includes(page);
+    return ["Главная", "Живая лента", "Игроки", "Настройки", "Профиль"].includes(
+      page
+    );
   }
 
   return page !== "Админ-панель";

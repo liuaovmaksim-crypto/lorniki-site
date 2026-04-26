@@ -1,5 +1,6 @@
 "use client";
-
+import { useSession } from "next-auth/react";
+import DiscordLoginButton from "./DiscordLoginButton";
 import { addNotification } from "./Notifications";
 import { useEffect, useState } from "react";
 import {
@@ -65,7 +66,7 @@ const startPosts: PostItem[] = [
   {
     id: 1,
     author: "Kamiko System",
-    role: "Владелец",
+    role: "Система",
     group: "Объявления",
     content:
       "Живая лента запущена в тестовом режиме. Теперь посты, комментарии и реакции сохраняются локально.",
@@ -526,53 +527,569 @@ function InfoBlock({
   );
 }
 
-export function ProfilePage({ currentUser }: { currentUser: UserProfile }) {
+export function PlayersPage({
+  users,
+  currentUser,
+  setPage,
+  setViewedUser,
+  updateUser,
+}: {
+  users: UserProfile[];
+  currentUser: UserProfile;
+  setPage: (page: string) => void;
+  setViewedUser: (user: UserProfile | null) => void;
+  updateUser: (userId: number, patch: Partial<UserProfile>) => void;
+}) {
+  const { data: session } = useSession();
+
+  const [search, setSearch] = useState("");
+  const [openedTools, setOpenedTools] = useState<number | null>(null);
+
+  const canModerate = currentUser.isOwner || currentUser.isModerator;
+  const isOwner = currentUser.isOwner;
+
+  const filteredUsers = users.filter((user) =>
+    `${user.nickname} ${user.discordName || ""} ${user.role} ${user.faction}`
+      .toLowerCase()
+      .includes(search.toLowerCase())
+  );
+
+  function openUser(user: UserProfile) {
+    setViewedUser(user);
+    setPage("Профиль");
+  }
+
+  function punish(user: UserProfile, type: "warning" | "reprimand" | "timeout") {
+    if (!canModerate) return;
+
+    if (type === "warning") {
+      const next = Math.min(2, user.warnings + 1);
+      updateUser(user.id, {
+        warnings: next,
+        status: `Получено предупреждение ${next}/2`,
+      });
+    }
+
+    if (type === "reprimand") {
+      const next = Math.min(3, user.reprimands + 1);
+      updateUser(user.id, {
+        reprimands: next,
+        status: next >= 3 ? "Снят с лорника / ЧС" : `Получен выговор ${next}/3`,
+      });
+    }
+
+    if (type === "timeout") {
+      updateUser(user.id, {
+        timeoutUntil: "30 минут",
+        status: "В тайм-ауте",
+      });
+    }
+  }
+
+  function clearPunishments(user: UserProfile) {
+    if (!canModerate) return;
+
+    updateUser(user.id, {
+      warnings: 0,
+      reprimands: 0,
+      timeoutUntil: null,
+      status: user.isOwner ? "Полный доступ" : "Активный лорник"
+    });
+  }
+
+  function setRole(user: UserProfile, role: Role) {
+    if (!isOwner) return;
+
+    updateUser(user.id, {
+      role,
+      status: role === "Гость" ? "Ожидает регистрации" : "Активный лорник",
+    });
+  }
+
+  function toggleModerator(user: UserProfile) {
+    if (!isOwner) return;
+
+    updateUser(user.id, {
+      isModerator: !user.isModerator,
+      status: !user.isModerator
+        ? "Имеет модераторскую привилегию"
+        : "Активный лорник",
+    });
+  }
+
   return (
     <>
-      <SectionTitle title="Профиль" subtitle="аккаунт пользователя" />
+      <SectionTitle title="Игроки" subtitle="зарегистрированные пользователи" />
 
-      <div className="mt-10 grid gap-6 xl:grid-cols-[360px_1fr]">
-        <div className="rounded-[34px] border border-white/10 bg-black/35 p-6 text-white backdrop-blur-xl">
-          <div className="mx-auto grid h-28 w-28 place-items-center rounded-full border border-[var(--second)]/30 bg-[var(--second)]/10 text-4xl font-black">
-            {currentUser.nickname[0] || "?"}
-          </div>
+      <div className="mt-10 max-w-5xl">
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Найти игрока..."
+          className="w-full rounded-full border border-white/10 bg-black/35 px-6 py-4 text-white outline-none placeholder:text-white/30"
+        />
 
-          <h3 className="mt-5 text-center text-2xl font-black">
-            {currentUser.nickname}
-          </h3>
+        <div className="mt-6 grid gap-5">
+          {filteredUsers.map((user) => {
+            const name = user.discordName || user.nickname;
+            const avatar =
+  user.discordAvatar ||
+  (user.id === currentUser.id ? session?.user?.image : null);
+            const toolsOpen = openedTools === user.id;
 
-          <p className="mt-2 text-center text-white/45">
-            {currentUser.role} · {currentUser.faction}
+            return (
+              <article
+                key={user.id}
+                className="rounded-[34px] border border-white/10 bg-black/35 p-5 text-white backdrop-blur-xl transition hover:border-[var(--accent)]/50"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-5">
+                  <div className="flex min-w-0 flex-1 items-center gap-4">
+                    <div className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-full border border-[var(--second)]/30 bg-[var(--second)]/10 text-xl font-black">
+                      {avatar ? (
+                        <img
+                          src={avatar}
+                          alt="avatar"
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        name?.[0] ?? "?"
+                      )}
+                    </div>
+
+                    <div className="min-w-0">
+                      <h3 className="truncate text-2xl font-black">{name}</h3>
+                      <p className="mt-1 text-sm text-white/40">
+                        {user.role} · {user.faction}
+                      </p>
+                      <p className="mt-2 text-sm text-white/45">
+                        {user.status}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => openUser(user)}
+                      className="rounded-full border border-white/10 bg-white/[0.03] px-5 py-3 text-sm font-bold transition hover:bg-white/10"
+                    >
+                      Профиль
+                    </button>
+
+                    {canModerate && (
+                      <button
+                        onClick={() =>
+                          setOpenedTools(toolsOpen ? null : user.id)
+                        }
+                        className="rounded-full bg-white px-5 py-3 text-sm font-black text-black transition hover:scale-105 active:scale-95"
+                      >
+                        Управление
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <p className="mt-4 text-sm leading-6 text-white/45">
+                  {user.bio || "Описание профиля пока не заполнено."}
+                </p>
+
+                <div className="mt-4 grid gap-3 text-sm md:grid-cols-4">
+                  <InfoRow label="Преды" value={`${user.warnings}/2`} />
+                  <InfoRow label="Выговоры" value={`${user.reprimands}/3`} />
+                  <InfoRow label="Тайм-аут" value={user.timeoutUntil || "Нет"} />
+                  <InfoRow
+                    label="Модерация"
+                    value={user.isModerator ? "Да" : "Нет"}
+                  />
+                </div>
+
+                {toolsOpen && canModerate && (
+                  <div className="mt-5 rounded-[28px] border border-white/10 bg-black/40 p-4">
+                    <h4 className="font-black">Быстрое управление</h4>
+
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <button
+                        onClick={() => punish(user, "warning")}
+                        className="rounded-full border border-yellow-400/30 bg-yellow-500/10 px-4 py-2 text-sm font-bold hover:bg-yellow-500/20"
+                      >
+                        Выдать предупреждение
+                      </button>
+
+                      <button
+                        onClick={() => punish(user, "reprimand")}
+                        className="rounded-full border border-red-400/30 bg-red-500/10 px-4 py-2 text-sm font-bold hover:bg-red-500/20"
+                      >
+                        Выдать выговор
+                      </button>
+
+                      <button
+                        onClick={() => punish(user, "timeout")}
+                        className="rounded-full border border-purple-400/30 bg-purple-500/10 px-4 py-2 text-sm font-bold hover:bg-purple-500/20"
+                      >
+                        Тайм-аут 30 минут
+                      </button>
+
+                      <button
+                        onClick={() => clearPunishments(user)}
+                        className="rounded-full border border-emerald-400/30 bg-emerald-500/10 px-4 py-2 text-sm font-bold hover:bg-emerald-500/20"
+                      >
+                        Снять наказания
+                      </button>
+                    </div>
+
+                    {isOwner && (
+                      <>
+                        <div className="my-4 h-px bg-white/10" />
+
+                        <button
+                          onClick={() => toggleModerator(user)}
+                          className="rounded-full border border-cyan-400/30 bg-cyan-500/10 px-4 py-2 text-sm font-bold hover:bg-cyan-500/20"
+                        >
+                          {user.isModerator
+                            ? "Снять модерацию"
+                            : "Выдать модерацию"}
+                        </button>
+
+                        <div className="mt-4">
+                          <p className="mb-2 text-xs font-bold uppercase tracking-[0.25em] text-white/35">
+                            Выдать роль
+                          </p>
+
+                          <div className="flex flex-wrap gap-2">
+                            {roles.map((role) => (
+                              <button
+                                key={role}
+                                onClick={() => setRole(user, role)}
+                                className={`rounded-full border px-4 py-2 text-sm font-bold transition ${
+                                  user.role === role
+                                    ? "border-white bg-[var(--accent)] text-black"
+                                    : "border-white/10 bg-white/[0.03] hover:bg-white/10"
+                                }`}
+                              >
+                                {role}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+              </article>
+            );
+          })}
+        </div>
+      </div>
+    </>
+  );
+}
+
+type ProfileLocalData = {
+  banner: string | null;
+  bio: string;
+};
+
+export function ProfilePage({ currentUser }: { currentUser: UserProfile }) {
+  const { data: session } = useSession();
+
+  const displayName =
+    currentUser.discordName || session?.user?.name || currentUser.nickname;
+
+  const displayAvatar =
+    currentUser.discordAvatar || session?.user?.image || null;
+
+  const storageKey = `kamiko-profile-${currentUser.id}`;
+
+  const [profileTab, setProfileTab] = useState<
+  "Обзор" | "Жалобы" | "Уведомления" | "Безопасность"
+>("Обзор");
+
+  const [profileData, setProfileData] = useState<ProfileLocalData>(() => {
+    if (typeof window === "undefined") {
+      return { banner: null, bio: currentUser.bio || "" };
+    }
+
+    const saved = localStorage.getItem(storageKey);
+
+    return saved
+      ? JSON.parse(saved)
+      : {
+          banner: null,
+          bio: currentUser.bio || "",
+        };
+  });
+
+  useEffect(() => {
+    localStorage.setItem(storageKey, JSON.stringify(profileData));
+  }, [profileData, storageKey]);
+
+  function uploadBanner(file: File | undefined) {
+    if (!file) return;
+
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      setProfileData((old) => ({
+        ...old,
+        banner: String(reader.result),
+      }));
+    };
+
+    reader.readAsDataURL(file);
+  }
+
+  const discordStatus = session?.user ? "Подключён" : "Не подключён";
+  const steamStatus = currentUser.steamId ? "Подключён" : "Не подключён";
+
+  return (
+    <>
+      <SectionTitle title="Профиль" subtitle="личный кабинет" />
+
+      <div className="mt-10 grid max-w-7xl gap-6 xl:grid-cols-[280px_1fr]">
+        <aside className="h-fit rounded-[34px] border border-white/10 bg-black/35 p-5 text-white backdrop-blur-xl">
+          <p className="text-xs font-black uppercase tracking-[0.35em] text-white/35">
+            Аккаунт
           </p>
 
-          <button className="mt-6 w-full rounded-full bg-white px-6 py-4 font-black text-black shadow-[0_0_var(--glow)_var(--accent)] transition hover:scale-105 active:scale-95">
-            Войти через Steam
-          </button>
+<div className="mt-5 space-y-2">
+  {(["Обзор", "Жалобы", "Уведомления", "Безопасность"] as const).map((tab) => (
+    <button
+      key={tab}
+      onClick={() => setProfileTab(tab)}
+      className={`w-full rounded-2xl border px-4 py-4 text-left font-black transition ${
+        profileTab === tab
+          ? "border-white/40 bg-white/10 text-white"
+          : "border-white/10 bg-white/[0.03] text-white/55 hover:bg-white/10"
+      }`}
+    >
+      {tab === "Обзор" && "◇ "}
+      {tab === "Жалобы" && "↔ "}
+      {tab === "Уведомления" && "↝ "}
+      {tab === "Безопасность" && "🛡 "}
+      {tab}
+    </button>
+  ))}
+</div>
+        </aside>
 
-          <button className="mt-3 w-full rounded-full border border-white/10 bg-white/[0.03] px-6 py-4 font-bold transition hover:bg-white/10">
-            Подключить Discord
-          </button>
-        </div>
+<section className="space-y-6">
+  {profileTab === "Обзор" && (
+    <>
+          <div className="overflow-hidden rounded-[38px] border border-white/10 bg-black/35 text-white backdrop-blur-xl">
+            <div className="relative h-56 overflow-hidden border-b border-white/10 bg-gradient-to-br from-[var(--accent)]/25 via-black to-[var(--second)]/20">
+              {profileData.banner && (
+                <img
+                  src={profileData.banner}
+                  alt="profile banner"
+                  className="h-full w-full object-cover"
+                />
+              )}
 
-        <div className="rounded-[34px] border border-white/10 bg-black/35 p-6 text-white backdrop-blur-xl">
-          <h3 className="text-2xl font-black">Данные профиля</h3>
+              <div className="absolute inset-0 bg-gradient-to-t from-black via-black/30 to-transparent" />
 
-          <div className="mt-6 grid gap-3">
-            <InfoRow label="Steam" value="Не подключён" />
-            <InfoRow label="Discord" value="Не подключён" />
-            <InfoRow label="Ник" value={currentUser.nickname} />
-            <InfoRow label="Роль" value={currentUser.role} />
-            <InfoRow
-              label="Модерация"
-              value={currentUser.isModerator ? "Включена" : "Нет"}
-            />
-            <InfoRow label="Фракция" value={currentUser.faction} />
-            <InfoRow label="Статус" value={currentUser.status} />
-            <InfoRow label="Предупреждения" value={`${currentUser.warnings}/2`} />
-            <InfoRow label="Выговоры" value={`${currentUser.reprimands}/3`} />
-            <InfoRow label="Тайм-аут" value={currentUser.timeoutUntil || "Нет"} />
+              <label className="absolute right-6 top-6 cursor-pointer rounded-full border border-white/15 bg-black/50 px-5 py-3 text-sm font-black backdrop-blur-xl transition hover:bg-white/10">
+                Загрузить баннер
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => uploadBanner(e.target.files?.[0])}
+                  className="hidden"
+                />
+              </label>
+
+              {profileData.banner && (
+                <button
+                  onClick={() =>
+                    setProfileData((old) => ({ ...old, banner: null }))
+                  }
+                  className="absolute right-6 top-20 rounded-full border border-red-400/30 bg-red-500/10 px-5 py-3 text-sm font-black text-red-100 transition hover:bg-red-500/20"
+                >
+                  Убрать баннер
+                </button>
+              )}
+            </div>
+
+            <div className="relative px-8 pb-8">
+              <div className="-mt-16 flex flex-wrap items-end justify-between gap-5">
+                <div className="flex items-end gap-5">
+                  <div className="grid h-32 w-32 place-items-center overflow-hidden rounded-full border-4 border-black bg-[var(--second)]/10 text-5xl font-black shadow-[0_0_var(--glow)_var(--second)]">
+                    {displayAvatar ? (
+                      <img
+                        src={displayAvatar}
+                        alt="avatar"
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      displayName[0] || "?"
+                    )}
+                  </div>
+
+                  <div className="pb-3">
+                    <h3 className="text-4xl font-black">{displayName}</h3>
+                    <p className="mt-2 text-white/45">
+                      {currentUser.role} · {currentUser.faction}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mb-3 flex flex-wrap gap-2">
+                  {currentUser.isOwner && (
+                    <span className="rounded-full border border-pink-400/30 bg-pink-500/10 px-4 py-2 text-xs font-black text-pink-100">
+                      Владелец
+                    </span>
+                  )}
+
+                  {currentUser.isModerator && (
+                    <span className="rounded-full border border-cyan-400/30 bg-cyan-500/10 px-4 py-2 text-xs font-black text-cyan-100">
+                      Модерация
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <textarea
+                value={profileData.bio}
+                onChange={(e) =>
+                  setProfileData((old) => ({
+                    ...old,
+                    bio: e.target.value,
+                  }))
+                }
+                placeholder="Расскажи коротко о себе..."
+                className="mt-7 min-h-28 w-full resize-none rounded-3xl border border-white/10 bg-white/[0.03] px-5 py-4 leading-7 text-white outline-none placeholder:text-white/30"
+              />
+
+              <div className="mt-6 grid gap-4 md:grid-cols-3">
+                <div className="rounded-3xl border border-yellow-400/20 bg-yellow-500/10 p-5">
+                  <p className="text-sm text-white/45">Предупреждения</p>
+                  <p className="mt-2 text-3xl font-black">
+                    {currentUser.warnings}/2
+                  </p>
+                </div>
+
+                <div className="rounded-3xl border border-red-400/20 bg-red-500/10 p-5">
+                  <p className="text-sm text-white/45">Выговоры</p>
+                  <p className="mt-2 text-3xl font-black">
+                    {currentUser.reprimands}/3
+                  </p>
+                </div>
+
+                <div className="rounded-3xl border border-purple-400/20 bg-purple-500/10 p-5">
+                  <p className="text-sm text-white/45">Тайм-аут</p>
+                  <p className="mt-2 text-2xl font-black">
+                    {currentUser.timeoutUntil || "Нет"}
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
+
+          <div className="grid gap-6 xl:grid-cols-[1fr_360px]">
+            <div className="rounded-[34px] border border-white/10 bg-black/35 p-6 text-white backdrop-blur-xl">
+              <h4 className="text-2xl font-black">Данные профиля</h4>
+
+              <div className="mt-5 grid gap-3">
+                <InfoRow label="Ник" value={displayName} />
+                <InfoRow label="Роль" value={currentUser.role} />
+                <InfoRow label="Фракция" value={currentUser.faction} />
+                <InfoRow label="Статус" value={currentUser.status} />
+                <InfoRow label="Discord" value={discordStatus} />
+                <InfoRow label="Steam" value={steamStatus} />
+                <InfoRow
+                  label="Владелец"
+                  value={currentUser.isOwner ? "Да" : "Нет"}
+                />
+                <InfoRow
+                  label="Модерация"
+                  value={currentUser.isModerator ? "Включена" : "Нет"}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <button
+                onClick={() => {
+                  alert(
+                    "Steam подключение добавим отдельным API-роутом без next-auth-steam."
+                  );
+                }}
+                className="w-full rounded-full bg-white px-6 py-4 font-black text-black shadow-[0_0_var(--glow)_var(--accent)] transition hover:scale-105 active:scale-95"
+              >
+                {currentUser.steamId ? "Steam подключён" : "Войти через Steam"}
+              </button>
+
+              <DiscordLoginButton />
+
+              <div className="rounded-[34px] border border-white/10 bg-black/35 p-6 text-white backdrop-blur-xl">
+                <h4 className="text-xl font-black">Значки</h4>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {(currentUser.badges?.length
+                    ? currentUser.badges
+                    : ["Лорник"]
+                  ).map((badge) => (
+                    <span
+                      key={badge}
+                      className="rounded-full border border-[var(--accent)]/30 bg-[var(--accent)]/10 px-4 py-2 text-sm font-bold"
+                    >
+                      {badge}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+    </>
+  )}
+  {profileTab === "Жалобы" && (
+  <div className="rounded-[34px] border border-white/10 bg-black/35 p-6 text-white backdrop-blur-xl">
+    <h3 className="text-3xl font-black">Жалобы</h3>
+    <p className="mt-3 text-white/50">
+      Здесь позже будут жалобы, связанные с вашим профилем.
+    </p>
+
+    <div className="mt-6 rounded-3xl border border-white/10 bg-white/[0.03] p-5">
+      <p className="font-black">Активных жалоб нет</p>
+      <p className="mt-2 text-sm text-white/45">
+        Если на пользователя будет подана жалоба, она появится здесь.
+      </p>
+    </div>
+  </div>
+)}
+
+{profileTab === "Уведомления" && (
+  <div className="rounded-[34px] border border-white/10 bg-black/35 p-6 text-white backdrop-blur-xl">
+    <h3 className="text-3xl font-black">Уведомления</h3>
+    <p className="mt-3 text-white/50">
+      Системные уведомления профиля.
+    </p>
+
+    <div className="mt-6 space-y-3">
+      <div className="rounded-3xl border border-[var(--accent)]/20 bg-[var(--accent)]/10 p-5">
+        <p className="font-black">Профиль активен</p>
+        <p className="mt-2 text-sm text-white/55">
+          Ваш личный кабинет успешно загружен.
+        </p>
+      </div>
+    </div>
+  </div>
+)}
+
+{profileTab === "Безопасность" && (
+  <div className="rounded-[34px] border border-white/10 bg-black/35 p-6 text-white backdrop-blur-xl">
+    <h3 className="text-3xl font-black">Безопасность</h3>
+    <p className="mt-3 text-white/50">
+      Подключения и защита аккаунта.
+    </p>
+
+    <div className="mt-6 grid gap-4 md:grid-cols-2">
+      <InfoRow label="Discord" value={discordStatus} />
+      <InfoRow label="Steam" value={steamStatus} />
+      <InfoRow label="Модерация" value={currentUser.isModerator ? "Да" : "Нет"} />
+      <InfoRow label="Владелец" value={currentUser.isOwner ? "Да" : "Нет"} />
+    </div>
+  </div>
+)}
+        </section>
       </div>
     </>
   );
@@ -593,6 +1110,13 @@ export function FeedPage({ currentUser }: { currentUser: UserProfile }) {
 
   const groups = ["Все", ...factionGroups, "Объявления"];
   const hasTimeout = Boolean(currentUser.timeoutUntil);
+  const { data: session } = useSession();
+
+const currentAvatar =
+  currentUser.discordAvatar || session?.user?.image || null;
+
+const currentName =
+  currentUser.discordName || session?.user?.name || currentUser.nickname;
 
   useEffect(() => {
     localStorage.setItem("kamiko-feed-posts", JSON.stringify(posts));
@@ -603,7 +1127,7 @@ export function FeedPage({ currentUser }: { currentUser: UserProfile }) {
 
     const newPost: PostItem = {
       id: Date.now(),
-      author: currentUser.nickname,
+      author: currentName,
       role: currentUser.role,
       group,
       content: text.trim(),
@@ -739,8 +1263,7 @@ function addComment(postId: number) {
         <section className="space-y-5">
           <div className="rounded-[34px] border border-white/10 bg-black/35 p-5 text-white backdrop-blur-xl">
             <div className="flex gap-4">
-              <Avatar letter={currentUser.nickname[0] || "?"} />
-
+            <Avatar letter={currentName[0] || "?"} image={currentAvatar} size="md" />
               <div className="flex-1">
                 {hasTimeout && (
                   <div className="mb-4 rounded-2xl border border-red-400/20 bg-red-950/20 p-4 text-sm text-red-100">
@@ -787,10 +1310,10 @@ function addComment(postId: number) {
           </div>
 
           {filteredPosts.map((post) => {
-            const canDelete =
-              post.author === currentUser.nickname ||
-              currentUser.isModerator ||
-              currentUser.role === "Владелец";
+           const canDelete =
+  post.author === currentUser.nickname ||
+  currentUser.isModerator ||
+  currentUser.isOwner;
 
             return (
               <article
@@ -798,7 +1321,11 @@ function addComment(postId: number) {
                 className="rounded-[34px] border border-white/10 bg-black/35 p-5 text-white backdrop-blur-xl transition hover:border-white/25"
               >
                 <div className="flex gap-4">
-                  <Avatar letter={post.author[0]} />
+                  <Avatar
+  letter={post.author[0] || "?"}
+  image={post.author === currentName ? currentAvatar : null}
+  size="md"
+/>
 
                   <div className="flex-1">
                     <div className="flex flex-wrap items-center justify-between gap-3">
@@ -967,7 +1494,7 @@ export function SuggestionsPage({ currentUser }: { currentUser: UserProfile }) {
   const [text, setText] = useState("");
   const [chatText, setChatText] = useState("");
 
-  const canModerate = currentUser.role === "Владелец" || currentUser.isModerator;
+  const canModerate = currentUser.isOwner || currentUser.isModerator;
 
   useEffect(() => {
     localStorage.setItem("kamiko-suggestions", JSON.stringify(ideas));
@@ -1561,7 +2088,7 @@ export function AdminPage({
   const [punishmentTarget, setPunishmentTarget] = useState(currentUser.nickname);
   const [punishmentReason, setPunishmentReason] = useState("");
 
-  const isAdmin = currentUser.role === "Владелец" || currentUser.isModerator;
+  const isAdmin = currentUser.isOwner || currentUser.isModerator;
 
   useEffect(() => {
     function updateLogs() {
@@ -1590,16 +2117,12 @@ export function AdminPage({
     );
   }
 
-  const tabs = [
-    "Логи",
-    "Наказания",
-    "Тайм-ауты",
-    "Выдача ролей",
-    "Модерация",
-    "Живая лента",
-    "Предложения",
-    "Квоты",
-  ];
+const tabs = [
+  "Логи",
+  "Живая лента",
+  "Предложения",
+  "Квоты",
+];
 
   const feedLogs = logs.filter(
     (log) =>
@@ -1633,27 +2156,26 @@ export function AdminPage({
     setLogs([]);
   }
 
-  function setUserRole(newRole: Role) {
-    const faction =
-      newRole === "Демон"
-        ? "Демоны"
-        : newRole === "Истребитель"
-        ? "Истребители"
-        : newRole === "Гость"
-        ? "Скитальцы"
-        : currentUser.faction;
+function setUserRole(newRole: Role) {
+  const faction =
+    newRole === "Демон"
+      ? "Демоны"
+      : newRole === "Истребитель"
+      ? "Истребители"
+      : newRole === "Гость"
+      ? "Скитальцы"
+      : currentUser.faction;
 
-    setCurrentUser((user) => ({
-      ...user,
-      role: newRole,
-      faction,
-      status:
-        newRole === "Гость"
-          ? "Ожидает регистрации"
-          : newRole === "Владелец"
-          ? "Полный доступ"
-          : "Активный лорник",
-    }));
+  setCurrentUser((user) => ({
+    ...user,
+    role: newRole,
+    faction,
+    status: user.isOwner
+      ? "Полный доступ"
+      : newRole === "Гость"
+      ? "Ожидает регистрации"
+      : "Активный лорник",
+  }));
 
     writeLog({
       type: "Выдача роли",
@@ -1717,7 +2239,7 @@ export function AdminPage({
       ...user,
       warnings: 0,
       reprimands: 0,
-      status: user.role === "Владелец" ? "Полный доступ" : "Активный лорник",
+      status: user.isOwner ? "Полный доступ" : "Активный лорник"
     }));
 
     writeLog({
@@ -1894,14 +2416,11 @@ export function AdminPage({
 
                 <button
                   onClick={() => {
-                    setCurrentUser((user) => ({
-                      ...user,
-                      timeoutUntil: null,
-                      status:
-                        user.role === "Владелец"
-                          ? "Полный доступ"
-                          : "Активный лорник",
-                    }));
+setCurrentUser((user) => ({
+  ...user,
+  timeoutUntil: null,
+  status: user.isOwner ? "Полный доступ" : "Активный лорник",
+}));
 
                     writeLog({
                       type: "Снятие тайм-аута",
@@ -1948,7 +2467,7 @@ export function AdminPage({
             <>
               <h3 className="text-2xl font-black">Модерация</h3>
 
-              {currentUser.role !== "Владелец" ? (
+              {!currentUser.isOwner ? (
                 <p className="mt-3 text-white/45">
                   Только владелец может выдавать или снимать модераторскую
                   привилегию.
@@ -2108,10 +2627,30 @@ function InfoRow({ label, value }: { label: string; value: string | number }) {
   );
 }
 
-function Avatar({ letter }: { letter: string }) {
+function Avatar({
+  letter,
+  image,
+  size = "md",
+}: {
+  letter: string;
+  image?: string | null;
+  size?: "sm" | "md" | "lg";
+}) {
+  const sizes = {
+    sm: "h-10 w-10 text-base",
+    md: "h-12 w-12 text-lg",
+    lg: "h-16 w-16 text-xl",
+  };
+
   return (
-    <div className="grid h-12 w-12 shrink-0 place-items-center rounded-full border border-[var(--second)]/30 bg-[var(--second)]/10 font-black text-white">
-      {letter}
+    <div
+      className={`grid shrink-0 place-items-center overflow-hidden rounded-full border border-[var(--second)]/30 bg-[var(--second)]/10 font-black text-white ${sizes[size]}`}
+    >
+      {image ? (
+        <img src={image} alt="avatar" className="h-full w-full object-cover" />
+      ) : (
+        letter
+      )}
     </div>
   );
 }
@@ -2577,7 +3116,7 @@ export function QuotaPage({ currentUser }: { currentUser: UserProfile }) {
   const [comment, setComment] = useState("");
   const [reviewText, setReviewText] = useState<Record<number, string>>({});
 
-  const canModerate = currentUser.role === "Владелец" || currentUser.isModerator;
+  const canModerate = currentUser.isOwner || currentUser.isModerator;
 
   useEffect(() => {
     localStorage.setItem("kamiko-quota-reports", JSON.stringify(reports));
@@ -2967,7 +3506,7 @@ function FeedChatBox({ currentUser }: { currentUser: UserProfile }) {
     });
   }
 
-  const canDelete = currentUser.role === "Владелец" || currentUser.isModerator;
+ const canDelete = currentUser.isOwner || currentUser.isModerator;
 
   return (
     <div className="rounded-[34px] border border-white/10 bg-black/35 p-5 text-white backdrop-blur-xl">
@@ -3038,14 +3577,14 @@ function AdminChat({ currentUser }: { currentUser: UserProfile }) {
   const [messages, setMessages] = useState<any[]>([]);
   const [text, setText] = useState("");
 
-  if (!currentUser.isModerator && currentUser.role !== "Владелец") {
-  return null;
-}
-
   useEffect(() => {
     const saved = localStorage.getItem("admin_chat");
     if (saved) setMessages(JSON.parse(saved));
   }, []);
+
+  if (!currentUser.isOwner && !currentUser.isModerator) {
+    return null;
+  }
 
   const send = () => {
     if (!text.trim()) return;
@@ -3067,16 +3606,13 @@ function AdminChat({ currentUser }: { currentUser: UserProfile }) {
     <div className="mt-8 rounded-[30px] border border-white/10 bg-black/40 p-5 text-white backdrop-blur-sm">
       <h3 className="text-xl font-black">Админ-чат</h3>
 
-      <div className="mt-4 max-h-[250px] overflow-y-auto space-y-2">
+      <div className="mt-4 max-h-[250px] space-y-2 overflow-y-auto">
         {messages.length === 0 && (
           <p className="text-white/40">Сообщений пока нет</p>
         )}
 
         {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className="rounded-xl bg-white/[0.04] p-3 text-sm"
-          >
+          <div key={msg.id} className="rounded-xl bg-white/[0.04] p-3 text-sm">
             <p className="font-bold">{msg.author}</p>
             <p>{msg.text}</p>
             <p className="text-xs text-white/30">{msg.time}</p>
