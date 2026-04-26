@@ -1,0 +1,140 @@
+@import "tailwindcss";
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: #030203;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+::selection {
+  background: var(--accent);
+  color: #000;
+}
+
+@keyframes particle-fall {
+  0% {
+    transform: translate3d(0, -10vh, 0) rotate(0deg);
+    opacity: 0;
+  }
+
+  8% {
+    opacity: var(--particles);
+  }
+
+  78% {
+    opacity: var(--particles);
+  }
+
+  100% {
+    transform: translate3d(var(--drift), 110vh, 0) rotate(var(--rotate));
+    opacity: 0;
+  }
+}
+
+@keyframes mist {
+  0% {
+    transform: translateX(-20%);
+  }
+
+  100% {
+    transform: translateX(20%);
+  }
+}
+
+@keyframes mist-reverse {
+  0% {
+    transform: translateX(20%);
+  }
+
+  100% {
+    transform: translateX(-20%);
+  }
+}
+
+@keyframes mist-slow {
+  0% {
+    transform: translateX(-12%);
+  }
+
+  100% {
+    transform: translateX(12%);
+  }
+}
+
+.particle-fall {
+  animation-name: particle-fall;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  will-change: transform, opacity;
+}
+
+.animate-mist {
+  animation: mist 22s ease-in-out infinite alternate;
+}
+
+.animate-mist-reverse {
+  animation: mist-reverse 28s ease-in-out infinite alternate;
+}
+
+.animate-mist-slow {
+  animation: mist-slow 34s ease-in-out infinite alternate;
+}
+
+@keyframes scroll-card-show {
+  from {
+    opacity: 0;
+    transform: translateY(28px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.scroll-card {
+  opacity: 1;
+  animation: scroll-card-show 0.45s ease both;
+}
+
+.scroll-card,
+.scroll-card *,
+.group,
+.group * {
+  filter: none !important;
+}
+
+.scroll-card {
+  opacity: 1 !important;
+  transform: none !important;
+  filter: none !important;
+  animation: none !important;
+  animation-timeline: auto !important;
+}
+
+.scroll-card:hover,
+.scroll-card:hover * {
+  filter: none !important;
+}
