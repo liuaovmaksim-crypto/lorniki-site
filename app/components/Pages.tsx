@@ -788,35 +788,15 @@ type ProfileLocalData = {
   bio: string;
 };
 
-export function ProfilePage({ currentUser }: { currentUser: UserProfile }) {
-  const { data: session } = useSession();
+export function ProfilePage({
+  currentUser,
+  viewedUser,
+}: {
+  currentUser: UserProfile;
+  viewedUser?: UserProfile | null;
+}) {
 
-  const displayName =
-    currentUser.discordName || session?.user?.name || currentUser.nickname;
-
-  const displayAvatar =
-    currentUser.discordAvatar || session?.user?.image || null;
-
-  const storageKey = `kamiko-profile-${currentUser.id}`;
-
-  const [profileTab, setProfileTab] = useState<
-  "Обзор" | "Жалобы" | "Уведомления" | "Безопасность"
->("Обзор");
-
-  const [profileData, setProfileData] = useState<ProfileLocalData>(() => {
-    if (typeof window === "undefined") {
-      return { banner: null, bio: currentUser.bio || "" };
-    }
-
-    const saved = localStorage.getItem(storageKey);
-
-    return saved
-      ? JSON.parse(saved)
-      : {
-          banner: null,
-          bio: currentUser.bio || "",
-        };
-  });
+const profileUser = viewedUser || currentUser;
 
   useEffect(() => {
     localStorage.setItem(storageKey, JSON.stringify(profileData));
