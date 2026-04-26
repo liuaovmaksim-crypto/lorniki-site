@@ -62,7 +62,7 @@ export default function Home() {
     if (!session?.user) return;
 
     const discordId =
-      session.user.id || session.user.email || session.user.name || null;
+      (session.user as any).id || session.user.email || session.user.name || null;
 
     if (!discordId) return;
 
