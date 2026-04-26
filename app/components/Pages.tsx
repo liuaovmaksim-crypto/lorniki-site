@@ -795,9 +795,20 @@ export function ProfilePage({
   currentUser: UserProfile;
   viewedUser?: UserProfile | null;
 }) {
+  const { data: session } = useSession();
 
-const profileUser = viewedUser || currentUser;
-const storageKey = `kamiko-profile-${profileUser.id}`;
+  const profileUser = viewedUser || currentUser;
+  const storageKey = `kamiko-profile-${profileUser.id}`;
+
+  const displayName =
+    profileUser.discordName || session?.user?.name || profileUser.nickname;
+
+  const displayAvatar =
+    profileUser.discordAvatar || session?.user?.image || null;
+
+  const [profileTab, setProfileTab] = useState<
+    "Обзор" | "Жалобы" | "Уведомления" | "Безопасность"
+  >("Обзор");
 
 const [profileData, setProfileData] = useState<ProfileLocalData>(() => {
   if (typeof window === "undefined") {
@@ -837,7 +848,7 @@ if (saved) {
   }
 
   const discordStatus = session?.user ? "Подключён" : "Не подключён";
-  const steamStatus = currentUser.steamId ? "Подключён" : "Не подключён";
+  const steamStatus = profileUser.steamId ? "Подключён" : "Не подключён";
 
   return (
     <>
